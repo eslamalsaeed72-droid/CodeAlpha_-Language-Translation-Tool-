@@ -1,261 +1,196 @@
 # ============================================================================
-# APP: AI-Powered Language Translator & Text-to-Speech
-# AUTHOR: CodeAlpha (Refactored for Professional Deployment)
-# DESCRIPTION: A Streamlit web application utilizing Deep Translator for
-#              text translation and gTTS for audio synthesis.
+# APPLICATION: AI Neural Translator Pro
+# AUTHOR: CodeAlpha
+# DESCRIPTION: Professional translation dashboard with text analytics (Word/Char count),
+#              TTS synthesis, and modern UI design.
 # ============================================================================
 
 import streamlit as st
 from deep_translator import GoogleTranslator
-from langdetect import detect, DetectorFactory
-from datetime import datetime
 from gtts import gTTS
 from io import BytesIO
+import datetime
 
 # ============================================================================
-# SECTION 1: CONFIGURATION & ASSETS
+# 1. PAGE CONFIGURATION & STYLING
 # ============================================================================
 
 st.set_page_config(
-    page_title="AI Neural Translator",
-    page_icon="🎧",
+    page_title="AI Translator Pro",
+    page_icon="🔮",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Inject Custom CSS for a modern, flat design aesthetic
+# Professional CSS for a "Glassmorphism" look
 st.markdown("""
 <style>
-    /* Global App Styling */
+    /* Background & Main Theme */
     .stApp {
-        background-color: #f8f9fa;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     }
-    
-    /* Header Styling */
-    h1 {
-        color: #2c3e50;
-        font-family: 'Helvetica Neue', sans-serif;
+
+    /* Container Cards Styling */
+    .css-card {
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
     }
-    
-    /* Input/Output Area Styling */
+
+    /* Input/Text Area Styling */
     .stTextArea textarea {
         background-color: #ffffff;
+        border: 1px solid #e1e4e8;
         border-radius: 10px;
-        border: 1px solid #e0e0e0;
         font-size: 16px;
+        font-family: 'Segoe UI', sans-serif;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    /* Action Button Styling */
+    /* Metrics Styling */
+    [data-testid="stMetricValue"] {
+        font-size: 24px;
+        color: #2c3e50;
+    }
+    
+    /* Button Styling */
     .stButton button {
         background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
         color: white;
         border: none;
+        padding: 12px 24px;
+        font-size: 18px;
         border-radius: 8px;
-        font-weight: 600;
-        padding: 0.6rem 1rem;
+        width: 100%;
         transition: all 0.3s ease;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     
     .stButton button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    /* Audio Player Width Fix */
-    .stAudio {
-        width: 100%;
-        margin-top: 10px;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# SECTION 2: SESSION STATE MANAGEMENT
+# 2. HELPER FUNCTIONS
 # ============================================================================
 
-# Initialize session state for persistence across re-runs
-if 'translation_history' not in st.session_state:
-    st.session_state.translation_history = []
-
-# ============================================================================
-# SECTION 3: UTILITY FUNCTIONS & CONSTANTS
-# ============================================================================
-
-# Supported Languages Mapping (ISO 639-1 Codes)
 LANGUAGES = {
-    'ar': 'Arabic', 'en': 'English', 'fr': 'French', 'de': 'German', 
-    'es': 'Spanish', 'it': 'Italian', 'ja': 'Japanese', 'ru': 'Russian',
-    'tr': 'Turkish', 'zh-CN': 'Chinese (Simplified)', 'hi': 'Hindi', 'ko': 'Korean'
+    'Auto-detect': 'auto', 'Arabic': 'ar', 'English': 'en', 'French': 'fr', 
+    'German': 'de', 'Spanish': 'es', 'Italian': 'it', 'Japanese': 'ja', 
+    'Russian': 'ru', 'Turkish': 'tr', 'Chinese': 'zh-CN'
 }
 
-def text_to_speech(text: str, lang_code: str) -> BytesIO:
-    """
-    Generates audio from text using Google Text-to-Speech (gTTS).
-    
-    Args:
-        text (str): The translated text to convert to speech.
-        lang_code (str): The ISO 639-1 language code (e.g., 'en', 'ar').
-        
-    Returns:
-        BytesIO: An in-memory binary stream containing the MP3 audio data.
-                 Returns None if generation fails.
-    """
+def get_text_metrics(text):
+    """Calculate character and word count."""
+    if not text:
+        return 0, 0
+    return len(text), len(text.split())
+
+def text_to_speech(text, lang):
+    """Generate TTS audio bytes."""
     try:
-        # Sanitize language code (gTTS usually expects 2-letter codes, exception for Chinese)
-        target_lang = lang_code
-        if len(lang_code) > 2 and lang_code != 'zh-CN':
-            target_lang = lang_code[:2]
-            
-        # Generate speech
-        tts = gTTS(text=text, lang=target_lang, slow=False)
-        
-        # Write to in-memory buffer to avoid file system I/O operations
-        audio_buffer = BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0) # Reset pointer to the beginning of the file
-        
-        return audio_buffer
-        
-    except Exception as e:
-        # Log error to console (or handle gracefully in UI)
-        print(f"TTS Error: {e}")
+        if lang == 'auto': lang = 'en' # Fallback
+        tts = gTTS(text=text, lang=lang, slow=False)
+        fp = BytesIO()
+        tts.write_to_fp(fp)
+        return fp
+    except:
         return None
 
 # ============================================================================
-# SECTION 4: SIDEBAR INTERFACE
+# 3. MAIN DASHBOARD UI
 # ============================================================================
 
-with st.sidebar:
-    st.title("⚙️ Control Panel")
-    st.markdown("---")
-    
-    st.info(
-        """
-        **System Status:**
-        - Translation Engine: **Active**
-        - Audio Synthesis: **Active**
-        - Environment: **Production**
-        """
-    )
-    
-    st.markdown("### History Management")
-    if st.button("🗑️ Clear Session History", use_container_width=True):
-        st.session_state.translation_history = []
-        st.rerun()
-
-    st.markdown("---")
-    st.caption("v2.0.1 | Engineered with Streamlit")
-
-# ============================================================================
-# SECTION 5: MAIN APPLICATION LOGIC
-# ============================================================================
-
-# Header
-st.title("🌍 Neural Language Translator")
-st.markdown("### Instant Translation with Synthesis Support")
+# --- Header Section ---
+st.markdown("<h1 style='text-align: center; color: #2c3e50;'>🔮 AI Neural Translator Pro</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #7f8c8d;'>Advanced Translation • Text Analytics • Speech Synthesis</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# Layout: Split screen for Input and Output
-col_input, col_output = st.columns(2, gap="medium")
+# --- Main Interface ---
+col1, col2 = st.columns([1, 1], gap="large")
 
-# --- LEFT COLUMN: SOURCE INPUT ---
-with col_input:
-    st.subheader("📝 Source Input")
+# === LEFT COLUMN: INPUT ===
+with col1:
+    st.markdown("### 📝 Source Input")
     
-    # Language Selection
-    source_lang_label = st.selectbox(
-        "Source Language",
-        ["Auto-detect"] + list(LANGUAGES.values()),
-        key="src_lang_select"
-    )
+    # Language Selector
+    src_lang = st.selectbox("Source Language", list(LANGUAGES.keys()), index=0)
     
-    # Text Input Area
-    source_text = st.text_area(
-        "Enter text to translate:",
-        height=250,
-        placeholder="Type or paste content here...",
-        help="Supports automatic language detection."
-    )
-
-# --- RIGHT COLUMN: TRANSLATION OUTPUT ---
-with col_output:
-    st.subheader("🎯 Target Output")
+    # Input Area
+    source_text = st.text_area("Type your text here...", height=250, key="source_input")
     
-    # Target Language Selection (Default to Arabic for convenience)
-    target_lang_label = st.selectbox(
-        "Target Language",
-        list(LANGUAGES.values()),
-        index=0, # Index 0 is Arabic in our dict
-        key="tgt_lang_select"
-    )
+    # 📊 Live Analytics (Counters)
+    char_count, word_count = get_text_metrics(source_text)
     
-    # Resolve Language Codes
-    if source_lang_label == "Auto-detect":
-        source_code = 'auto'
-    else:
-        # Reverse lookup to find key by value
-        source_code = [k for k, v in LANGUAGES.items() if v == source_lang_label][0]
-        
-    target_code = [k for k, v in LANGUAGES.items() if v == target_lang_label][0]
+    # Display Metrics in a neat row
+    m1, m2, m3 = st.columns(3)
+    with m1: st.metric("Characters", char_count)
+    with m2: st.metric("Words", word_count)
+    with m3: st.metric("Language", src_lang)
 
-    # Placeholder container for results to ensure layout stability
-    result_container = st.empty()
+# === RIGHT COLUMN: OUTPUT ===
+with col2:
+    st.markdown("### 🎯 Translation Output")
+    
+    # Language Selector (Default to Arabic)
+    tgt_lang = st.selectbox("Target Language", list(LANGUAGES.keys())[1:], index=0) # Skip Auto
+    
+    # Placeholder for result
+    result_box = st.empty()
+    audio_box = st.empty()
 
-# --- ACTION SECTION ---
-st.markdown("---")
-col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
+# === ACTION BAR ===
+st.markdown("<br>", unsafe_allow_html=True)
+btn_col1, btn_col2, btn_col3 = st.columns([1, 2, 1])
 
-with col_btn_2:
-    process_btn = st.button("🚀 Process Translation & Generate Audio", use_container_width=True)
+with btn_col2:
+    translate_btn = st.button("🚀 Translate & Analyze")
 
-# --- EXECUTION LOGIC ---
-if process_btn:
-    if not source_text.strip():
-        st.warning("⚠️ Input buffer is empty. Please enter text to proceed.")
-    else:
-        with st.spinner("🔄 Processing request... Please wait."):
+# ============================================================================
+# 4. LOGIC ENGINE
+# ============================================================================
+
+if translate_btn:
+    if source_text.strip():
+        with st.spinner("Processing... Neural Engine Active"):
             try:
-                # Step 1: Perform Translation
-                translator = GoogleTranslator(source=source_code, target=target_code)
+                # 1. Prepare Codes
+                src_code = LANGUAGES[src_lang]
+                tgt_code = LANGUAGES[tgt_lang]
+                
+                # 2. Translate
+                translator = GoogleTranslator(source=src_code, target=tgt_code)
                 translated_text = translator.translate(source_text)
                 
-                # Step 2: Generate Audio
-                audio_data = text_to_speech(translated_text, target_code)
-                
-                # Step 3: Render Results
-                with col_output:
+                # 3. Render Output
+                with col2:
                     st.success(translated_text)
+                    
+                    # 4. Generate Audio
+                    audio_data = text_to_speech(translated_text, tgt_code)
                     if audio_data:
-                        st.markdown("**🔊 Audio Playback:**")
+                        st.markdown("**🔊 Pronunciation:**")
                         st.audio(audio_data, format='audio/mp3')
-                
-                # Step 4: Update History (Append to Session State)
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                st.session_state.translation_history.append({
-                    "time": timestamp,
-                    "src_txt": source_text,
-                    "tgt_txt": translated_text,
-                    "lang_pair": f"{source_lang_label} → {target_lang_label}"
-                })
-                
+                        
             except Exception as e:
-                st.error(f"❌ System Error: {str(e)}")
+                st.error(f"System Error: {str(e)}")
+    else:
+        st.warning("⚠️ Please enter text to translate.")
 
 # ============================================================================
-# SECTION 6: HISTORICAL DATA VIEW
+# 5. FOOTER
 # ============================================================================
-
-if st.session_state.translation_history:
-    st.markdown("---")
-    st.subheader("📜 Recent Activity Log")
-    
-    # Display last 5 records in reverse chronological order
-    for record in reversed(st.session_state.translation_history[-5:]):
-        with st.expander(f"[{record['time']}] {record['lang_pair']}"):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.caption("Original:")
-                st.write(record['src_txt'])
-            with col_b:
-                st.caption("Translated:")
-                st.write(record['tgt_txt'])
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: #95a5a6; font-size: 12px;'>
+        © 2026 AI Translator Pro | Powered by Deep Learning
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
