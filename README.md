@@ -1,6 +1,6 @@
 # 🔮 AI Neural Translator Pro
 
-![Project Screenshot](Demo/screenshot.png)
+![Project Screenshot](Demo/Screenshot 2026-01-06 214930.png)
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit)
