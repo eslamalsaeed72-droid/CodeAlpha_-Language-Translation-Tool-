@@ -1,251 +1,261 @@
-
 # ============================================================================
-# SECTION 1: IMPORTS - Required Libraries and Dependencies
+# APP: AI-Powered Language Translator & Text-to-Speech
+# AUTHOR: CodeAlpha (Refactored for Professional Deployment)
+# DESCRIPTION: A Streamlit web application utilizing Deep Translator for
+#              text translation and gTTS for audio synthesis.
 # ============================================================================
 
 import streamlit as st
 from deep_translator import GoogleTranslator
 from langdetect import detect, DetectorFactory
 from datetime import datetime
+from gtts import gTTS
+from io import BytesIO
 
 # ============================================================================
-# SECTION 2: PAGE CONFIGURATION
+# SECTION 1: CONFIGURATION & ASSETS
 # ============================================================================
 
 st.set_page_config(
-    page_title="🌍 Advanced Language Translator",
-    page_icon="🌐",
+    page_title="AI Neural Translator",
+    page_icon="🎧",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ============================================================================
-# SECTION 3: CUSTOM CSS STYLING
-# ============================================================================
-
+# Inject Custom CSS for a modern, flat design aesthetic
 st.markdown("""
 <style>
-    body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-    .main { padding: 2rem; }
-    .stButton button {
-        background-color: #667eea;
-        color: white;
+    /* Global App Styling */
+    .stApp {
+        background-color: #f8f9fa;
+    }
+    
+    /* Header Styling */
+    h1 {
+        color: #2c3e50;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    
+    /* Input/Output Area Styling */
+    .stTextArea textarea {
+        background-color: #ffffff;
         border-radius: 10px;
-        padding: 10px 20px;
-        font-weight: bold;
+        border: 1px solid #e0e0e0;
+        font-size: 16px;
+    }
+    
+    /* Action Button Styling */
+    .stButton button {
+        background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+        color: white;
         border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        padding: 0.6rem 1rem;
         transition: all 0.3s ease;
     }
+    
     .stButton button:hover {
-        background-color: #764ba2;
-        transform: scale(1.05);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    .stExpander {
-        background-color: rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
-        padding: 10px;
+    
+    /* Audio Player Width Fix */
+    .stAudio {
+        width: 100%;
+        margin-top: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# SECTION 4: SESSION STATE INITIALIZATION
+# SECTION 2: SESSION STATE MANAGEMENT
 # ============================================================================
 
+# Initialize session state for persistence across re-runs
 if 'translation_history' not in st.session_state:
     st.session_state.translation_history = []
 
-if 'character_count' not in st.session_state:
-    st.session_state.character_count = 0
-
 # ============================================================================
-# SECTION 5: LANGUAGE DICTIONARY
+# SECTION 3: UTILITY FUNCTIONS & CONSTANTS
 # ============================================================================
 
+# Supported Languages Mapping (ISO 639-1 Codes)
 LANGUAGES = {
-    'af': 'Afrikaans', 'ar': 'Arabic', 'bg': 'Bulgarian', 'bn': 'Bengali',
-    'ca': 'Catalan', 'zh-CN': 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)',
-    'cs': 'Czech', 'da': 'Danish', 'de': 'German', 'el': 'Greek',
-    'en': 'English', 'es': 'Spanish', 'et': 'Estonian', 'fa': 'Persian',
-    'fi': 'Finnish', 'fr': 'French', 'gu': 'Gujarati', 'he': 'Hebrew',
-    'hi': 'Hindi', 'hu': 'Hungarian', 'id': 'Indonesian', 'it': 'Italian',
-    'ja': 'Japanese', 'kn': 'Kannada', 'ko': 'Korean', 'lt': 'Lithuanian',
-    'ml': 'Malayalam', 'mr': 'Marathi', 'ne': 'Nepali', 'nl': 'Dutch',
-    'no': 'Norwegian', 'pa': 'Punjabi', 'pl': 'Polish', 'pt': 'Portuguese',
-    'ro': 'Romanian', 'ru': 'Russian', 'sk': 'Slovak', 'sl': 'Slovenian',
-    'so': 'Somali', 'sq': 'Albanian', 'sv': 'Swedish', 'sw': 'Swahili',
-    'ta': 'Tamil', 'te': 'Telugu', 'th': 'Thai', 'tl': 'Tagalog',
-    'tr': 'Turkish', 'uk': 'Ukrainian', 'ur': 'Urdu', 'vi': 'Vietnamese',
-    'yo': 'Yoruba', 'zu': 'Zulu'
+    'ar': 'Arabic', 'en': 'English', 'fr': 'French', 'de': 'German', 
+    'es': 'Spanish', 'it': 'Italian', 'ja': 'Japanese', 'ru': 'Russian',
+    'tr': 'Turkish', 'zh-CN': 'Chinese (Simplified)', 'hi': 'Hindi', 'ko': 'Korean'
 }
 
-# ============================================================================
-# SECTION 7: TRANSLATION FUNCTION - Fixed using deep-translator
-# ============================================================================
-
-def translate_text(text, src_lang, dest_lang):
+def text_to_speech(text: str, lang_code: str) -> BytesIO:
     """
-    Execute translation using deep-translator (Synchronous & Stable).
+    Generates audio from text using Google Text-to-Speech (gTTS).
+    
+    Args:
+        text (str): The translated text to convert to speech.
+        lang_code (str): The ISO 639-1 language code (e.g., 'en', 'ar').
+        
+    Returns:
+        BytesIO: An in-memory binary stream containing the MP3 audio data.
+                 Returns None if generation fails.
     """
     try:
-        # Handle auto-detect
-        if src_lang is None or src_lang == 'auto':
-            src_lang = 'auto'
+        # Sanitize language code (gTTS usually expects 2-letter codes, exception for Chinese)
+        target_lang = lang_code
+        if len(lang_code) > 2 and lang_code != 'zh-CN':
+            target_lang = lang_code[:2]
+            
+        # Generate speech
+        tts = gTTS(text=text, lang=target_lang, slow=False)
         
-        # deep-translator handles synchronous calls perfectly
-        translator = GoogleTranslator(source=src_lang, target=dest_lang)
-        return translator.translate(text)
-    
+        # Write to in-memory buffer to avoid file system I/O operations
+        audio_buffer = BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0) # Reset pointer to the beginning of the file
+        
+        return audio_buffer
+        
     except Exception as e:
-        st.error(f"❌ Translation API Error: {str(e)}")
+        # Log error to console (or handle gracefully in UI)
+        print(f"TTS Error: {e}")
         return None
 
 # ============================================================================
-# SECTION 8: SIDEBAR
+# SECTION 4: SIDEBAR INTERFACE
 # ============================================================================
 
 with st.sidebar:
-    st.markdown("### ⚙️ Settings & Info")
+    st.title("⚙️ Control Panel")
     st.markdown("---")
-    st.markdown("""
-    **About This App:**
-    - 🌐 Powered by Deep Translator
-    - ⚡ No Async Errors
-    - 📊 Track translation history
-    """)
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Total Translations", len(st.session_state.translation_history))
-    with col2:
-        st.metric("Chars Translated", st.session_state.character_count)
-    st.markdown("---")
-    st.markdown("Built with Python 🐍 & Streamlit 🎨")
-
-# ============================================================================
-# SECTION 9: HEADER
-# ============================================================================
-
-st.markdown("# 🌍 Advanced Language Translator")
-st.markdown("### Translate text instantly with high accuracy!")
-st.markdown("---")
-
-# ============================================================================
-# SECTION 10: MAIN CONTENT AREA
-# ============================================================================
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("### 📝 Input Text")
-    source_text = st.text_area(
-        "Enter text to translate:",
-        placeholder="Type or paste your text here...",
-        height=200,
-        key="source_text"
+    
+    st.info(
+        """
+        **System Status:**
+        - Translation Engine: **Active**
+        - Audio Synthesis: **Active**
+        - Environment: **Production**
+        """
     )
-
-with col2:
-    st.markdown("### 🎯 Language Settings")
     
-    auto_detect = st.checkbox("🔍 Auto-detect source language", value=True)
-    
-    if auto_detect:
-        st.info("Source language will be detected automatically")
-        source_lang = 'auto'
-        source_lang_display = "Auto-detect"
-    else:
-        source_lang_name = st.selectbox(
-            "Select source language:",
-            options=list(LANGUAGES.values()),
-            index=list(LANGUAGES.values()).index('English')
-        )
-        source_lang = [k for k, v in LANGUAGES.items() if v == source_lang_name][0]
-        source_lang_display = source_lang_name
-    
-    st.markdown("---")
-    
-    target_lang_name = st.selectbox(
-        "Select target language:",
-        options=list(LANGUAGES.values()),
-        index=list(LANGUAGES.values()).index('Arabic')
-    )
-    target_lang = [k for k, v in LANGUAGES.items() if v == target_lang_name][0]
-
-# ============================================================================
-# SECTION 11: TRANSLATE BUTTON & LOGIC
-# ============================================================================
-
-st.markdown("---")
-col1, col2, col3 = st.columns([1, 1, 1])
-
-with col2:
-    translate_btn = st.button("🚀 Translate", use_container_width=True)
-
-if translate_btn:
-    if source_text.strip():
-        with st.spinner("⏳ Translating..."):
-            
-            # 1. Detect language for display purposes (Optional)
-            if auto_detect:
-                try:
-                    DetectorFactory.seed = 0
-                    detected_code = detect(source_text)
-                    source_lang_display = LANGUAGES.get(detected_code, detected_code)
-                except:
-                    source_lang_display = "Detected"
-
-            # 2. Perform Translation
-            translated_text = translate_text(source_text, source_lang, target_lang)
-            
-            if translated_text:
-                # Update stats
-                st.session_state.character_count += len(source_text)
-                
-                # Update history
-                history_item = {
-                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    'source_text': source_text,
-                    'source_lang': source_lang_display,
-                    'target_lang': target_lang_name,
-                    'translated_text': translated_text
-                }
-                st.session_state.translation_history.append(history_item)
-                
-                st.success("✅ Translation completed!")
-                
-                st.markdown("---")
-                st.markdown("### 📤 Translation Result")
-                
-                r_col1, r_col2 = st.columns(2)
-                with r_col1:
-                    st.markdown(f"**Source ({source_lang_display}):**")
-                    st.info(source_text)
-                with r_col2:
-                    st.markdown(f"**Target ({target_lang_name}):**")
-                    st.success(translated_text)
-            else:
-                st.error("Translation returned empty result.")
-    else:
-        st.warning("⚠️ Please enter text first.")
-
-# ============================================================================
-# SECTION 13: HISTORY
-# ============================================================================
-
-st.markdown("---")
-st.markdown("### 📜 Translation History")
-
-if st.session_state.translation_history:
-    for idx, item in enumerate(reversed(st.session_state.translation_history[-10:]), 1):
-        with st.expander(f"#{idx} - {item['timestamp']}"):
-            st.text(f"From: {item['source_text'][:50]}...")
-            st.text(f"To: {item['translated_text'][:50]}...")
-    
-    if st.button("🗑️ Clear History"):
+    st.markdown("### History Management")
+    if st.button("🗑️ Clear Session History", use_container_width=True):
         st.session_state.translation_history = []
         st.rerun()
-else:
-    st.info("No translations yet.")
 
+    st.markdown("---")
+    st.caption("v2.0.1 | Engineered with Streamlit")
+
+# ============================================================================
+# SECTION 5: MAIN APPLICATION LOGIC
+# ============================================================================
+
+# Header
+st.title("🌍 Neural Language Translator")
+st.markdown("### Instant Translation with Synthesis Support")
+st.markdown("---")
+
+# Layout: Split screen for Input and Output
+col_input, col_output = st.columns(2, gap="medium")
+
+# --- LEFT COLUMN: SOURCE INPUT ---
+with col_input:
+    st.subheader("📝 Source Input")
+    
+    # Language Selection
+    source_lang_label = st.selectbox(
+        "Source Language",
+        ["Auto-detect"] + list(LANGUAGES.values()),
+        key="src_lang_select"
+    )
+    
+    # Text Input Area
+    source_text = st.text_area(
+        "Enter text to translate:",
+        height=250,
+        placeholder="Type or paste content here...",
+        help="Supports automatic language detection."
+    )
+
+# --- RIGHT COLUMN: TRANSLATION OUTPUT ---
+with col_output:
+    st.subheader("🎯 Target Output")
+    
+    # Target Language Selection (Default to Arabic for convenience)
+    target_lang_label = st.selectbox(
+        "Target Language",
+        list(LANGUAGES.values()),
+        index=0, # Index 0 is Arabic in our dict
+        key="tgt_lang_select"
+    )
+    
+    # Resolve Language Codes
+    if source_lang_label == "Auto-detect":
+        source_code = 'auto'
+    else:
+        # Reverse lookup to find key by value
+        source_code = [k for k, v in LANGUAGES.items() if v == source_lang_label][0]
+        
+    target_code = [k for k, v in LANGUAGES.items() if v == target_lang_label][0]
+
+    # Placeholder container for results to ensure layout stability
+    result_container = st.empty()
+
+# --- ACTION SECTION ---
+st.markdown("---")
+col_btn_1, col_btn_2, col_btn_3 = st.columns([1, 2, 1])
+
+with col_btn_2:
+    process_btn = st.button("🚀 Process Translation & Generate Audio", use_container_width=True)
+
+# --- EXECUTION LOGIC ---
+if process_btn:
+    if not source_text.strip():
+        st.warning("⚠️ Input buffer is empty. Please enter text to proceed.")
+    else:
+        with st.spinner("🔄 Processing request... Please wait."):
+            try:
+                # Step 1: Perform Translation
+                translator = GoogleTranslator(source=source_code, target=target_code)
+                translated_text = translator.translate(source_text)
+                
+                # Step 2: Generate Audio
+                audio_data = text_to_speech(translated_text, target_code)
+                
+                # Step 3: Render Results
+                with col_output:
+                    st.success(translated_text)
+                    if audio_data:
+                        st.markdown("**🔊 Audio Playback:**")
+                        st.audio(audio_data, format='audio/mp3')
+                
+                # Step 4: Update History (Append to Session State)
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                st.session_state.translation_history.append({
+                    "time": timestamp,
+                    "src_txt": source_text,
+                    "tgt_txt": translated_text,
+                    "lang_pair": f"{source_lang_label} → {target_lang_label}"
+                })
+                
+            except Exception as e:
+                st.error(f"❌ System Error: {str(e)}")
+
+# ============================================================================
+# SECTION 6: HISTORICAL DATA VIEW
+# ============================================================================
+
+if st.session_state.translation_history:
+    st.markdown("---")
+    st.subheader("📜 Recent Activity Log")
+    
+    # Display last 5 records in reverse chronological order
+    for record in reversed(st.session_state.translation_history[-5:]):
+        with st.expander(f"[{record['time']}] {record['lang_pair']}"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.caption("Original:")
+                st.write(record['src_txt'])
+            with col_b:
+                st.caption("Translated:")
+                st.write(record['tgt_txt'])
