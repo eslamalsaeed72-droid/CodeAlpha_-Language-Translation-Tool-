@@ -169,7 +169,7 @@ if translate_btn:
                 
                 # 3. Render Output
                 with col2:
-                    st.success(translated_text)
+                    st.code(translated_text, language=None)
                     
                     # 4. Generate Audio
                     audio_data = text_to_speech(translated_text, tgt_code)
