@@ -96,8 +96,3 @@ The app will launch automatically in your default web browser at `http://localho
 **Eslam** *Mechatronics Engineer | AI & Embedded Systems Enthusiast*
 
 ---
-
-
-بهذا الشكل، أول ما ترفع الملفات على GitHub، الصورة ستظهر تلقائياً في واجهة المشروع، وسيكون كل شيء منظماً باحترافية.
-
-```
